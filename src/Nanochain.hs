@@ -104,23 +104,33 @@ proofOfWork
   -> Timestamp
   -> BlockData
   -> Int64
-proofOfWork idx prevHash ts bdata' = calcNonce 0  
-  where
-    dbits = round $ logBase (2 :: Float) $ fromIntegral idx 
-    prefix = toS $ replicate dbits '0' 
+proofOfWork idx prevHash ts bdata' = calcNonce 0
+  where isCorrectNonce = isWorkProven idx prevHash ts bdata'
+        calcNonce n
+          | isCorrectNonce n = n
+          | otherwise = calcNonce $ n + 1
 
-    calcNonce n
-      | prefix' == prefix = n
-      | otherwise = calcNonce $ n + 1
-      where
-        hash' = calculateHash idx prevHash ts bdata' n 
-        prefix' = T.take dbits $ encode64 hash' 
+isWorkProven
+  :: Index
+  -> Hash
+  -> Timestamp
+  -> BlockData
+  -> Int64
+  -> Bool
+isWorkProven idx prevHash ts bdata' = wrk where
+  dbits = round $ logBase (2 :: Float) $ fromIntegral idx
+  prefix = toS $ replicate dbits '0'
+  wrk n = prefix' == prefix where
+    hash' = calculateHash idx prevHash ts bdata' n
+    prefix' = T.take dbits $ encode64 hash'
 
 isValidBlock :: Block -> Block -> Maybe Text
 isValidBlock previousBlock newBlock
   | bindex previousBlock + 1       /= bindex newBlock       = Just "Index is invalid"
   | bhash previousBlock            /= previousHash newBlock = Just "PreviousHash is invalid"
   | calculateHashForBlock newBlock /= bhash newBlock        = Just "Hash is invalid"
+  | not $ isWorkProven (bindex newBlock) (bhash previousBlock)
+    (timestamp newBlock) (bdata newBlock) (nonce newBlock)  = Just "Work has not been proven"
   | otherwise                                               = Nothing
 
 isValidChain :: Blockchain -> Maybe Text
